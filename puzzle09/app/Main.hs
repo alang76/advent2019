@@ -46,9 +46,15 @@ data ProgramState = ProgramState {
     outputValue :: Maybe Integer,
     resultValue :: Maybe Integer,
     terminated :: Bool
-} 
+}
 
-type Inputs = [Integer] -- initial phase and following inputs
+instance Show ProgramState where
+    show ps = "[ip=" ++ show (instructionPointer ps) ++
+              ",in=" ++ show (inputValues ps) ++
+              ",rb=" ++ show (relativeBase ps) ++
+              ",out=" ++ show (outputValue ps) ++
+              ",res=" ++ show (resultValue ps) ++
+              ",trm=" ++ show (terminated ps) ++ "]"
 
 trim :: String -> String
 trim = unpack . strip . pack
@@ -68,7 +74,6 @@ programParserP = some (do
    optional (char ',')
    return number)
    
-
 opCodeParserP :: Parser OpCode
 opCodeParserP = do
    digits <- some digitChar
@@ -114,10 +119,9 @@ processOpcodes programState  = do
     let 
         index = instructionPointer programState
         array = memory programState
-        inputs = inputValues programState
-        output = outputValue programState
-        
+
     instruction <- readArray array index
+
     let (opCode,paramModes) = getOpCodeAndParamModes instruction
         
         readParam :: Integer -> IO Integer
@@ -129,27 +133,43 @@ processOpcodes programState  = do
         readParamVal offset paramMode = do
                 param <- readParam offset
                 paramVal <- case paramMode of
-                        PositionMode -> trace ("reading position mode")  readArray array param
-                        RelativeMode -> trace ("reading relative mode, base + parm = " ++ show (relativeBase programState) ++ " + " ++ show param)  readArray array ((relativeBase programState) + param)
-                        ImmediateMode -> trace ("reading immediate mode") pure param
+                        PositionMode -> readArray array param
+                        ImmediateMode -> pure param
+                        RelativeMode ->  readArray array ((relativeBase programState) + param)
                 return $ paramVal
 
+        readDestVal :: Integer -> ParamMode -> IO Integer
+        readDestVal offset paramMode = do
+            param <- readParam offset
+            let paramVal = case paramMode of
+                    PositionMode -> param
+                    RelativeMode -> (relativeBase programState) + param
+                    ImmediateMode -> error "Cannot specify destination address in immediate mode!"
+            return paramVal
+            
         readModedParam :: Integer -> IO Integer
         readModedParam idx = readParamVal idx (getParam idx paramModes)
-            where 
-                getParam idx = case idx of
-                    1 -> getFirstParam
-                    2 -> getSecondParam
-                    3 -> getThirdParam
+
+        readModedDest :: Integer -> IO Integer
+        readModedDest idx = readDestVal idx (getParam idx paramModes)
+
+        getParam :: Integer -> ParamModes -> ParamMode
+        getParam idx = case idx of
+            1 -> getFirstParam
+            2 -> getSecondParam
+            3 -> getThirdParam
+        
+        readDest :: Integer -> IO Integer
+        readDest idx = readDestVal idx (getParam idx paramModes)
 
         doBinOp :: (Integer -> Integer -> Integer) -> IO ()
         doBinOp op = do
             left <- readModedParam 1
             right <- readModedParam 2
-            dest <- readParam 3
+            dest <- readModedDest 3
             writeArray array dest (left `op` right)
 
-    case trace ("opCode=" ++ (show opCode) ++ ", relbase = " ++ show (relativeBase programState)) opCode of
+    case opCode of
         Addition -> do
             doBinOp (+)
             processOpcodes $ programState {instructionPointer = index+4}
@@ -157,16 +177,14 @@ processOpcodes programState  = do
             doBinOp (*)
             processOpcodes $ programState {instructionPointer = index+4} 
         Input -> do
-            dest <- readModedParam 1
-            inputVal <- case inputs of 
-                [] -> fmap read getLine
-                _ -> pure (head inputs)
-            writeArray array dest inputVal
-            processOpcodes $ programState {instructionPointer = index+2, inputValues = if (length inputs)>0 then tail inputs else []}
+            dest <- readModedDest 1
+            putStr ("In: ")
+            inputVal <- getLine
+            writeArray array dest (read inputVal)
+            processOpcodes $ programState {instructionPointer = index+2, inputValues = []}
         Output -> do
-            outputVal <- readParamVal 1 (getFirstParam paramModes)
+            outputVal <- readModedParam 1
             putStrLn ("Out: " ++ show outputVal)
-            --return $ programState {instructionPointer = index+2, outputValue = Just outputVal}  
             processOpcodes $ programState {instructionPointer = index+2, outputValue = Just outputVal}  
         JumpIfTrue -> do
             p1 <- readModedParam 1
@@ -183,7 +201,7 @@ processOpcodes programState  = do
         LessThan -> do
             p1 <- readModedParam 1
             p2 <- readModedParam 2
-            dest <- readParam 3
+            dest <- readModedDest 3
             case p1 < p2 of
                 True -> writeArray array dest 1
                 False -> writeArray array dest 0
@@ -191,20 +209,20 @@ processOpcodes programState  = do
         Equals -> do
             p1 <- readModedParam 1
             p2 <- readModedParam 2
-            dest <- readParam 3
+            dest <- readModedDest 3
             case p1 == p2 of
                 True -> writeArray array dest 1
                 False -> writeArray array dest 0
             processOpcodes $ programState {instructionPointer = index+4}
         AdjustRelativeBase -> do
             p1 <- readModedParam 1
-            processOpcodes $ programState {instructionPointer = index+2, relativeBase =  trace ("adjusting relative base " ++ show (relativeBase programState) ++ " by " ++ show p1 )  (relativeBase programState) + p1}
+            processOpcodes $ programState {instructionPointer = index+2, relativeBase = (relativeBase programState) + p1}
         Terminate -> do
             result <- readArray array 1
             return $  trace ("result=" ++ (show result)) programState {resultValue = Just result, terminated = True}
 
 addInput :: ProgramState -> Integer -> ProgramState
-addInput state input = {- trace ( show ("adding input " ++ show input ++ " existing inputs: " ++ show (getInputs state))) -} state { inputValues = (inputValues state) ++ [input]}
+addInput state input =state { inputValues = (inputValues state) ++ [input]}
 
 initializeProgram :: [Integer] -> IO ProgramState
 initializeProgram program = do
@@ -213,13 +231,10 @@ initializeProgram program = do
 
 main = do
     inputText <- readFile "puzzle09_input.txt"
-    --inputText <- readFile "test1.txt"
     let 
-        program = fromJust . parseMaybe programParserP $ trace ("puzzle=" ++ show inputText) $ trim inputText
+        program = fromJust . parseMaybe programParserP $ trim inputText
 
     programState <- initializeProgram program
     resultState <- processOpcodes programState
     putStrLn ("program result: " ++ show (resultValue resultState) ++ ", outputVal = " ++ show (outputValue resultState))
-    memoryList <- getElems (memory resultState)
-    print memoryList
     
