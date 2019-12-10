@@ -192,7 +192,7 @@ processOpcodes programState  = do
 
 mkAmp :: [Int] -> Int -> IO ProgramState
 mkAmp program phase = do
-    arr <- newListArray  (0, (length program)-1) program  :: IO (IOArray Int Int)
+    arr <- newListArray  (0, (length program)-1) (program ++ repeat 0)   :: IO (IOArray Int Int)
     return $ ProgramState 0 arr [phase]  Nothing Nothing False
 
 mkAmps :: [Int] -> Maybe Int -> [Int] -> IO [ProgramState]
