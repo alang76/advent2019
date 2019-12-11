@@ -59,10 +59,10 @@ isOnMap coord visMap
 blockRay :: Bool -> (Int, Int) -> Int -> Int -> VisibilityMap -> VisibilityMap
 blockRay blockStart start@(x,y) ratio_x ratio_y visMap =
     let
-        blockedMap = trace ("vismap pre-block, (x,y) = " ++ show start ++ " -> \n" ++ show visMap) $ if blockStart then visMap else blockLocation start visMap
+        blockedMap = if blockStart then visMap else blockLocation start visMap
     in
         case isOnMap start visMap of
-            True -> trace ("vismap post-block, (x,y) = " ++ show start ++ " -> \n" ++ show blockedMap) $ blockRay True (x+ratio_x, y+ratio_y) ratio_x ratio_y blockedMap 
+            True -> blockRay False (x+ratio_x, y+ratio_y) ratio_x ratio_y blockedMap 
             False -> visMap
 
 updateVisibilityAsteroid :: (Int, Int) -> (Int,Int) -> VisibilityMap -> VisibilityMap
@@ -76,7 +76,7 @@ updateVisibilityAsteroid pov lookAt visMap =
         ratio_x = xdiff `div` ({- trace ("gcd for xdiff,ydiff " ++ show xdiff ++ ", " ++ show ydiff ++ " is " ++ show divisor) -} divisor)
         ratio_y = ydiff `div` divisor
     in
-        blockRay False lookAt ratio_x ratio_y visMap
+        blockRay True lookAt ratio_x ratio_y visMap
 
 updateVisibilityMap :: (Int, Int) -> [(Int, Int)] -> VisibilityMap -> VisibilityMap
 updateVisibilityMap _ [] visMap = visMap
@@ -92,9 +92,9 @@ getLocation '#' = Asteroid
 countVisibleRoids :: VisibilityMap -> [(Int, Int)] -> (Int, Int) -> Int
 countVisibleRoids visMap roids currentRoid = 
     let 
-        newVisMap = trace ("calculating visibility for roid: " ++ show currentRoid) updateVisibilityMap currentRoid (roids \\ [currentRoid]) visMap
+        newVisMap = {- trace ("calculating visibility for roid: " ++ show currentRoid) -} updateVisibilityMap currentRoid (roids \\ [currentRoid]) visMap
     in 
-        trace ("newvismap roid=(" ++ show currentRoid ++ ") = \n" ++ show newVisMap) $  foldr (\coord@(x,y) cnt -> cnt + (if fromJust $ Map.lookup coord (visibility newVisMap) then 1 else 0)) 0 roids
+        {- trace ("newvismap roid=(" ++ show currentRoid ++ ") = \n" ++ show newVisMap) $  -} foldr (\coord@(x,y) cnt -> cnt + (if fromJust $ Map.lookup coord (visibility newVisMap) then 1 else 0)) 0 roids
 
 mapRowParserP :: Parser [Location]
 mapRowParserP = do
@@ -110,7 +110,7 @@ mapParserP = some $ do
 
 main :: IO ()
 main = do
-    inputFile <- readFile "test1.txt"
+    inputFile <- readFile "puzzle10_input.txt"
     let
         (asteroidMap, visibilityMap) = buildMap . fromJust . parseMaybe mapParserP $ inputFile
         asteroidCoords = trace ("ast coords = " ++ show (getAsteroidCoords asteroidMap)) getAsteroidCoords asteroidMap
