@@ -10,7 +10,6 @@ import Data.Maybe
 import Data.Ord
 import Data.List
 import Data.List.Split
-import Debug.Trace
 
 type Parser = Parsec Void String
 
@@ -51,7 +50,7 @@ buildMap locations =
 
 
 blockLocation :: (Int, Int) -> VisibilityMap -> VisibilityMap
-blockLocation coord visMap = visMap {visibility = {- trace ("blocking: " ++ show coord) $ -} Map.insert coord False (visibility visMap)}
+blockLocation coord visMap = visMap {visibility = Map.insert coord False (visibility visMap)}
 
 isOnMap :: (Int,Int) -> VisibilityMap -> Bool
 isOnMap coord visMap
@@ -78,8 +77,7 @@ updateVisibilityAsteroid pov lookAt visMap =
         ratio_x = xdiff `div` divisor
         ratio_y = ydiff `div` divisor
     in
-        {- trace ("ratio_x = " ++ show ratio_x ++ ", ratio_y = " ++ show ratio_y) $ -}
-            blockRay True lookAt ratio_x ratio_y visMap
+        blockRay True lookAt ratio_x ratio_y visMap
 
 updateVisibilityMap :: (Int, Int) -> [(Int, Int)] -> VisibilityMap -> VisibilityMap
 updateVisibilityMap _ [] visMap = visMap
@@ -95,9 +93,9 @@ getLocation '#' = Asteroid
 countVisibleRoids :: VisibilityMap -> [(Int, Int)] -> (Int, Int) -> Int
 countVisibleRoids visMap roids currentRoid = 
     let 
-        newVisMap = {- trace ("calculating visibility for roid: " ++ show currentRoid) -} updateVisibilityMap currentRoid (roids \\ [currentRoid]) visMap
+        newVisMap = updateVisibilityMap currentRoid (roids \\ [currentRoid]) visMap
     in 
-        {- trace ("newvismap roid=(" ++ show currentRoid ++ ") = \n" ++ show newVisMap) $  -} foldr (\coord@(x,y) cnt -> cnt + (if fromJust $ Map.lookup coord (visibility newVisMap) then 1 else 0)) 0 roids
+        foldr (\coord@(x,y) cnt -> cnt + (if fromJust $ Map.lookup coord (visibility newVisMap) then 1 else 0)) 0 roids
 
 mapRowParserP :: Parser [Location]
 mapRowParserP = do
@@ -111,15 +109,68 @@ mapParserP = some $ do
     row <- mapRowParserP
     return row
 
+type AngleGroup =  (Float, [(Float, (Int,Int))])
+type AngleDist =  (Float, Float, (Int,Int))
+
+calcAngle :: (Int,Int) -> (Int,Int) -> AngleDist
+calcAngle pov@(xp,yp) target@(xt,yt) = 
+    let (xdiff,ydiff) = (xp-xt,yp-yt)
+        angle = atan2 (negate (fromIntegral xdiff)) (fromIntegral ydiff)
+        distSq = xdiff^2 + ydiff^2
+        anglePos = if angle<0 then ((2*pi)+angle) else angle
+    in
+       (anglePos, fromIntegral distSq, target)
+
+extractFirst :: (a, b, c) -> a
+extractFirst (a,_,_) = a
+
+calcAngles :: (Int, Int) -> [(Int, Int)] -> [AngleGroup]
+calcAngles laserRoid otherRoids = 
+    let 
+        sortDistance :: AngleGroup -> AngleGroup
+        sortDistance (angle, elems)  = (angle, sortBy (comparing fst) elems)
+
+        angleGrouper :: [AngleGroup] -> AngleGroup -> [AngleDist] -> [AngleGroup]
+        angleGrouper prevGroups curGroup [] = prevGroups ++ [sortDistance curGroup]
+        angleGrouper prevGroups curGroup@(curAngle, curList) ((newRoidAngle, newRoidDist, newRoidCoords):roids) 
+            | curAngle == newRoidAngle = angleGrouper prevGroups (curAngle, ((newRoidDist, newRoidCoords):curList)) roids
+            | otherwise = angleGrouper (prevGroups ++ [(sortDistance curGroup)]) (newRoidAngle, [(newRoidDist,newRoidCoords)]) roids
+
+        
+        ((ang,dist,coord):angleDists) = sortBy (comparing extractFirst) $ map (calcAngle laserRoid) $ otherRoids
+              
+    in
+        angleGrouper [] (ang, [(dist,coord)]) angleDists
+
+asteroidZapper :: AsteroidMap -> [(Int,Int)] -> (Int,Int) -> IO ()
+asteroidZapper asteroidMap asteroidCoords bestRoid = do
+    let
+        angleGroups = calcAngles bestRoid (asteroidCoords \\ [bestRoid])
+
+        zapper :: [AngleGroup] -> Int -> IO ()
+        zapper [] zapCount = putStrLn "Done. All are zapped!"
+        zapper ((curAngle, ((curDist, curCoord):others)):groups) zapCount = do
+            putStrLn ("Asteroid " ++ show zapCount ++ " is vaped at: " ++ show curCoord)
+            case others of 
+                [] -> zapper groups (zapCount+1)
+                _ -> zapper (groups ++ [(curAngle, others)]) (zapCount+1)
+    zapper angleGroups 1
+            
+findBestRoid :: AsteroidMap -> VisibilityMap -> [(Int,Int)] -> IO (Int,(Int,Int))
+findBestRoid asteroidMap visibilityMap asteroidCoords = do
+    let
+        asteroidsVisCount = map (\coord -> (subtract 1 $ countVisibleRoids visibilityMap asteroidCoords coord, coord)) asteroidCoords 
+        bestRoid = maximumBy (comparing fst) asteroidsVisCount
+    print "Best roid is:"
+    putStrLn (show bestRoid)
+    return bestRoid
+
 main :: IO ()
 main = do
     inputFile <- readFile "puzzle10_input.txt"
-    --inputFile <- readFile "test1.txt"
     let
         (asteroidMap, visibilityMap) = buildMap . fromJust . parseMaybe mapParserP $ inputFile
-        asteroidCoords = trace ("ast coords = " ++ show (getAsteroidCoords asteroidMap)) getAsteroidCoords asteroidMap
-        asteroidsVisCount = map (\coord -> (subtract 1 $ countVisibleRoids visibilityMap asteroidCoords coord, coord)) asteroidCoords 
-        bestRoid = maximumBy (comparing fst) asteroidsVisCount
-    print asteroidsVisCount
-    print "Best roid is:"
-    putStrLn (show bestRoid)
+        asteroidCoords = getAsteroidCoords asteroidMap
+    (bestScore, bestRoid) <- findBestRoid asteroidMap visibilityMap asteroidCoords
+    asteroidZapper asteroidMap asteroidCoords bestRoid
+    
