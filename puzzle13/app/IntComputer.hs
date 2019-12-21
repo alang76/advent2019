@@ -1,6 +1,10 @@
+
+{-# LANGUAGE ScopedTypeVariables #-}
+
 module IntComputer where
 
 import Control.Monad.ST
+import Control.Monad.State
 import Text.Megaparsec
 import Text.Megaparsec.Char
 import Data.Text (strip, pack, unpack)
@@ -108,13 +112,14 @@ getOpCodeAndParamModes i =
    in
        (fromJust . parseMaybe opCodeParserP $ opCodeStr, fromJust . parseMaybe paramModeParserP $ paramModesStrFull)
 
-processOpcodes:: ProgramState -> IO (ProgramState)
-processOpcodes programState  = do
+-- genInput and processOutput allow stateful computation on any state a
+processOpcodes:: forall a . ProgramState -> (a -> IO Integer) -> (a -> [Integer] -> a) -> StateT a IO (ProgramState)
+processOpcodes programState genInput processOutput = do
     let 
         index = instructionPointer programState
         array = memory programState
 
-    instruction <- readArray array index
+    instruction <- liftIO $ readArray array index
 
     let (opCode,paramModes) = getOpCodeAndParamModes instruction
         
@@ -163,59 +168,75 @@ processOpcodes programState  = do
             dest <- readModedDest 3
             writeArray array dest (left `op` right)
 
+        updateExternalState :: [Integer] ->  StateT a IO a
+        updateExternalState outputValues = do
+            curExternalState <- get
+            let updatedExternalState = processOutput curExternalState outputValues
+            put updatedExternalState
+            return updatedExternalState
+
     case opCode of
         Addition -> do
-            doBinOp (+)
-            processOpcodes $ programState {instructionPointer = index+4}
+            liftIO $ doBinOp (+)
+            processOpcodes (programState {instructionPointer = index+4}) genInput processOutput 
         Multiplication -> do
-            doBinOp (*)
-            processOpcodes $ programState {instructionPointer = index+4} 
+            liftIO $ doBinOp (*)
+            processOpcodes (programState {instructionPointer = index+4}) genInput processOutput 
         Input -> do
-            dest <- readModedDest 1
+            dest <- liftIO $ readModedDest 1
             case (inputValues programState) of 
-                [] -> return $ programState
+                [] -> do
+                    updatedExternalState <- updateExternalState (outputValues programState)
+                    calcInput <- liftIO $ genInput updatedExternalState
+                    liftIO $ writeArray array dest calcInput
+                    processOpcodes (programState {instructionPointer = index+2, outputValues = [] }) genInput processOutput 
                 otherwise -> do
-                    writeArray array dest (head . inputValues $ programState)
-                    processOpcodes $ programState {instructionPointer = index+2, inputValues = tail . inputValues $ programState}
+                    liftIO $ writeArray array dest (head . inputValues $ programState)
+                    processOpcodes (programState {instructionPointer = index+2, inputValues = tail . inputValues $ programState}) genInput processOutput 
         Output -> do
-            outputVal <- readModedParam 1
-            putStrLn ("Out: " ++ show outputVal)
-            processOpcodes $ programState {instructionPointer = index+2, outputValues = (outputValues programState) ++ [outputVal]}  
+            outputVal <- liftIO $ readModedParam 1
+            --liftIO $ putStrLn ("Out: " ++ show outputVal)
+            processOpcodes (programState {instructionPointer = index+2, outputValues = (outputValues programState) ++ [outputVal]}) genInput processOutput 
         JumpIfTrue -> do
-            p1 <- readModedParam 1
-            p2 <- readModedParam 2
+            p1 <- liftIO $ readModedParam 1
+            p2 <- liftIO $ readModedParam 2
             case p1 of 
-                0 -> processOpcodes $ programState {instructionPointer = index+3}
-                otherwise -> processOpcodes $ programState {instructionPointer = p2}
+                0 -> processOpcodes (programState {instructionPointer = index+3}) genInput processOutput 
+                otherwise -> processOpcodes (programState {instructionPointer = p2}) genInput processOutput 
         JumpIfFalse -> do
-            p1 <- readModedParam 1
-            p2 <- readModedParam 2
+            p1 <- liftIO $ readModedParam 1
+            p2 <- liftIO $ readModedParam 2
             case p1 of 
-                0 -> processOpcodes $  programState {instructionPointer = p2}
-                otherwise -> processOpcodes $ programState {instructionPointer = index+3}
+                0 -> processOpcodes (programState {instructionPointer = p2}) genInput processOutput 
+                otherwise -> processOpcodes (programState {instructionPointer = index+3}) genInput processOutput 
         LessThan -> do
-            p1 <- readModedParam 1
-            p2 <- readModedParam 2
-            dest <- readModedDest 3
+            p1 <- liftIO $ readModedParam 1
+            p2 <- liftIO $ readModedParam 2
+            dest <- liftIO $ readModedDest 3
             case p1 < p2 of
-                True -> writeArray array dest 1
-                False -> writeArray array dest 0
-            processOpcodes $ programState {instructionPointer = index+4}
+                True -> liftIO $ writeArray array dest 1
+                False -> liftIO $ writeArray array dest 0
+            processOpcodes (programState {instructionPointer = index+4}) genInput processOutput 
         Equals -> do
-            p1 <- readModedParam 1
-            p2 <- readModedParam 2
-            dest <- readModedDest 3
+            p1 <- liftIO $ readModedParam 1
+            p2 <- liftIO $ readModedParam 2
+            dest <- liftIO $ readModedDest 3
             case p1 == p2 of
-                True -> writeArray array dest 1
-                False -> writeArray array dest 0
-            processOpcodes $ programState {instructionPointer = index+4}
+                True -> liftIO $ writeArray array dest 1
+                False -> liftIO $ writeArray array dest 0
+            processOpcodes (programState {instructionPointer = index+4}) genInput processOutput 
         AdjustRelativeBase -> do
-            p1 <- readModedParam 1
-            processOpcodes $ programState {instructionPointer = index+2, relativeBase = (relativeBase programState) + p1}
+            p1 <- liftIO $ readModedParam 1
+            processOpcodes (programState {instructionPointer = index+2, relativeBase = (relativeBase programState) + p1}) genInput processOutput 
         Terminate -> do
-            result <- readArray array 1
+            liftIO $ putStrLn "terminated"
+            updateExternalState (outputValues programState) -- process any remaining outputs
+            result <- liftIO $ readArray array 1
             return $ programState {resultValue = Just result, terminated = True}
 
+writeMemory :: ProgramState -> Integer -> Integer -> IO ()
+writeMemory programState location value = writeArray (memory programState) location value
+    
 addInput :: ProgramState -> Integer -> ProgramState
 addInput state input =state { inputValues = (inputValues state) ++ [input]}
 
