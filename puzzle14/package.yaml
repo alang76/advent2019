@@ -1,0 +1,46 @@
+name:                puzzle14
+version:             0.1.0.0
+github:              "alang76/puzzle14"
+license:             BSD3
+author:              "Arjen Langebaerd"
+maintainer:          "arjen@langebaerd.net"
+copyright:           "do whatever"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            Short description of your package
+# category:            Web
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/alang76/puzzle14#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- megaparsec >= 8.0.0
+- containers >= 0.6.0.1
+#- array >= 0.5.3.0
+#- text >= 1.2.3.1
+#- split >= 0.1.1
+#- mtl >= 2.2.2
+
+executables:
+  puzzle14-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+tests:
+  puzzle14-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
