@@ -1,7 +1,6 @@
 module Main where
 
 import IntComputer
-
 import Data.Map (Map)
 import qualified Data.Map as Map
 import Data.List.Split
@@ -23,7 +22,6 @@ readTile 1 = Wall
 readTile 2 = Block
 readTile 3 = Paddle
 readTile 4 = Ball
-
 
 data GameWorld = GameWorld {
     tiles :: Map (Int,Int) Tile,
@@ -66,7 +64,6 @@ drawObject [x,y,tileNum] gameWorld =
                 newBallPos = case curTile of
                     Ball -> x
                     otherwise -> ballPos gameWorld
-
             in
                 gameWorld {
                     tiles=Map.insert (xi,yi) curTile (tiles gameWorld), 
@@ -81,13 +78,10 @@ insertCoin programState = writeMemory programState 0 2
 getJoystickInput :: Integer -> Integer -> IO Integer
 getJoystickInput ball paddle
     | ball < paddle = do
-        --putStrLn "going left!"
         return (-1)
     | ball == paddle = do
-        --putStrLn "doing nothing!"
         return 0
     | ball > paddle = do
-        --putStrLn "going right!"
         return 1
 
 updateGame :: GameWorld -> [[Integer]] -> GameWorld
@@ -118,7 +112,6 @@ main = do
                 --print gameWorld
                 joyStickInput <- getJoystickInput (ballPos gameWorld) (paddlePos gameWorld)
                 return joyStickInput
-
     
     (newProgramState, newGameWorldState) <- runStateT (processOpcodes programState inputComputer gameUpdater) mkGameWorld
     print ("Final score = " ++ show (score newGameWorldState))

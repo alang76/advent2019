@@ -21,9 +21,12 @@ description:         Please see the README on GitHub at <https://github.com/alan
 
 dependencies:
 - base >= 4.7 && < 5
-
-library:
-  source-dirs: src
+- megaparsec >= 8.0.0
+- containers >= 0.6.0.1
+#- array >= 0.5.3.0
+#- text >= 1.2.3.1
+#- split >= 0.1.1
+#- mtl >= 2.2.2
 
 executables:
   puzzle14-exe:
@@ -33,9 +36,6 @@ executables:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    dependencies:
-    - puzzle14
-
 tests:
   puzzle14-test:
     main:                Spec.hs
@@ -44,5 +44,3 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    dependencies:
-    - puzzle14
