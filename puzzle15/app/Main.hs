@@ -1,7 +1,3 @@
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
-
-
 module Main where
 
 import IntComputer
@@ -14,7 +10,6 @@ import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
 import Control.Monad.State
-import Debug.Trace
 
 data Tile = Wall | Open | Oxygen deriving (Show,Eq) 
 data Direction = North | East | South | West deriving (Show,Eq)
@@ -42,6 +37,7 @@ data ExploreState = ExploreState {
     endNode :: Maybe MapNode
 }
 
+directions :: [Direction]
 directions = [North, East, South, West]
 
 reverseDirection :: Direction -> Direction
@@ -66,18 +62,19 @@ getTile :: Integer -> Tile
 getTile 0 = Wall
 getTile 1 = Open
 getTile 2 = Oxygen
+getTile _ = error "Invalid status code!"
 
 getExploredDirections :: Ship -> MapNode -> [Direction]
-getExploredDirections ship node = 
+getExploredDirections ship' node'' = 
     let
-        outEdges = out ship (getNode node)
-        inEdges = inn ship (getNode node)
+        outEdges = out ship' (getNode node'')
+        inEdges = inn ship' (getNode node'')
     in
         (map (reverseDirection . fst . edgeLabel) inEdges) ++ map (fst . edgeLabel) outEdges
 
 getExploreDirection :: Ship -> MapNode -> Maybe Direction
-getExploreDirection ship node = 
-    let exploredDirections = getExploredDirections ship node
+getExploreDirection ship' node'' = 
+    let exploredDirections = getExploredDirections ship' node''
         directionsToExplore =
             directions \\ exploredDirections
     in 
@@ -89,77 +86,74 @@ mkExploreState :: ExploreState
 mkExploreState = 
     let 
         startShip = empty
-        startNode = (head $ newNodes 1 startShip, ((0,0), Open))
-        initialMap = Map.insert (0,0) startNode Map.empty
+        startNode' = (head $ newNodes 1 startShip, ((0,0), Open))
+        initialMap = Map.insert (0,0) startNode' Map.empty
     in
-        ExploreState startShip startNode initialMap (getExploreDirection startShip startNode) startNode Nothing
+        ExploreState startShip startNode' initialMap (getExploreDirection startShip startNode') startNode' Nothing
 
-moveDirection :: Ship -> MapNode -> MapNode -> Maybe Direction
-moveDirection curShip curNode startNode = 
+moveDirection :: Ship -> MapNode -> Maybe Direction
+moveDirection curShip curNode = 
     let
         inEdges = inn curShip (getNode curNode)
         originDirection = fmap reverseDirection . headMay . map fst . filter snd . map edgeLabel $ inEdges
-        exploreDirection = getExploreDirection curShip curNode
+        exploreDirection' = getExploreDirection curShip curNode
     in
         case getNodeLabel curNode of
             (_, Wall) ->  originDirection
-            (coord, tile) ->
-                case exploreDirection of
+            _ ->
+                case exploreDirection' of
                     Just dir -> 
                         Just dir
                     Nothing ->  case fst (getNodeLabel curNode) of
                         (0,0) ->
                             Nothing 
-                        otherwise ->
+                        _ ->
                             originDirection
             
 addNode :: Ship -> MapNode -> MapNodeMap -> Direction -> Tile -> (Ship, MapNode, MapNodeMap) 
-addNode ship node mapNodeMap direction tile = 
+addNode ship' node'' mapNodeMap direction tile = 
     let
-        (coord, _) = getNodeLabel node
+        (coord, _) = getNodeLabel  node''
         newLocation = getNewLocation coord direction
         existingNode = Map.lookup newLocation mapNodeMap
     in
         case existingNode of
             Just existingNode' -> -- node exists, create only new edge
                 let 
-                    edge' = (getNode node, getNode existingNode', (direction, False))
+                    edge' = (getNode node'', getNode existingNode', (direction, False))
                 in
-                    case hasLEdge ship edge' of
+                    case hasLEdge ship' edge' of
                         True -> -- edge already exists, just update position
-                            (ship, existingNode', mapNodeMap)
+                            (ship', existingNode', mapNodeMap)
                         False -> -- create new edge
-                            (insEdge edge' ship, existingNode', mapNodeMap)
+                            (insEdge edge' ship', existingNode', mapNodeMap)
             Nothing ->
                 let
                     newLabel = (newLocation, tile)
-                    newNode = (head $ newNodes 1 ship, newLabel)
-                    newGraph = insNode newNode ship
-                    newEdge = (getNode node, getNode newNode, (direction, True))
+                    newNode = (head $ newNodes 1 ship', newLabel)
+                    newGraph = insNode newNode ship'
+                    newEdge = (getNode node'', getNode newNode, (direction, True))
                     newNodeMap = Map.insert newLocation newNode mapNodeMap
                 in 
                     (insEdge newEdge newGraph, newNode, newNodeMap)
         
 inputGenerator :: ExploreState -> IO (Maybe Integer)
-inputGenerator es = pure . fmap directionToInteger $  moveDirection  (ship es) ( node es) (startNode es)
+inputGenerator es = pure . fmap directionToInteger $  moveDirection  (ship es) (node es)
 
 outputProcessor :: ExploreState -> [Integer] -> IO ExploreState
 outputProcessor exploreState [statusCode] = 
     let
         curShip = ship exploreState
         curNode = node exploreState
-        sNode = startNode exploreState
         cureNodeMap = nodeMap exploreState
         exploredDirection = exploreDirection exploreState
-        inEdges = inn curShip (fst curNode)
-        origin = headMay . filter (snd . edgeLabel) $ inEdges
     in
         case exploredDirection of
             Just dir -> 
                 do
                     let 
                         (newShip, newNode, newNodeMap) = addNode curShip curNode cureNodeMap dir (getTile statusCode)
-                        getNewExploreDirection toNode = moveDirection newShip toNode sNode
+                        getNewExploreDirection toNode = moveDirection newShip toNode
                     case statusCode of
                         0 -> -- make a wall node, position stays the same
                             let newExploreDirection = getNewExploreDirection curNode
@@ -170,6 +164,7 @@ outputProcessor exploreState [statusCode] =
                         2 -> -- make new oxygen node and update position to it
                             let newExploreDirection =  getNewExploreDirection newNode
                             in pure exploreState {ship = newShip, node = newNode, endNode=Just newNode, nodeMap = newNodeMap, exploreDirection = newExploreDirection}
+                        _ -> error ("Invalid status code received: " ++ show statusCode)
             Nothing -> do
                 return exploreState                
 outputProcessor exploreState _ = do
@@ -196,6 +191,6 @@ main :: IO ()
 main = do
     input <- readFile "puzzle15_input.txt"
     programState <- readProgram input
-    (resultProgramState,finalExploreState) <- runStateT (processOpcodes programState inputGenerator outputProcessor) mkExploreState
+    (_,finalExploreState) <- runStateT (processOpcodes programState inputGenerator outputProcessor) mkExploreState
     putStrLn ("Shortest path length is: " ++ (show $ getShortestPathLength finalExploreState))
     putStrLn ("Oxygen fillup time is: " ++ (show $ getOxygenFillupTime finalExploreState))
