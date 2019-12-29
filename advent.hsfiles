@@ -46,8 +46,6 @@ tests:
     - -threaded
     - -rtsopts
     - -with-rtsopts=-N
-    dependencies:
-    - {{name}}
 
 
 {-# START_FILE stack.yaml #-}

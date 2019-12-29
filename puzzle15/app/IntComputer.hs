@@ -113,7 +113,7 @@ getOpCodeAndParamModes i =
        (fromJust . parseMaybe opCodeParserP $ opCodeStr, fromJust . parseMaybe paramModeParserP $ paramModesStrFull)
 
 -- genInput and processOutput allow stateful computation on any state a
-processOpcodes:: forall a . ProgramState -> (a -> IO Integer) -> (a -> [Integer] -> a) -> StateT a IO (ProgramState)
+processOpcodes:: forall a . ProgramState -> (a -> IO (Maybe Integer)) -> (a -> [Integer] -> IO a) -> StateT a IO (ProgramState)
 processOpcodes programState genInput processOutput = do
     let 
         index = instructionPointer programState
@@ -171,7 +171,7 @@ processOpcodes programState genInput processOutput = do
         updateExternalState :: [Integer] ->  StateT a IO a
         updateExternalState outputValues = do
             curExternalState <- get
-            let updatedExternalState = processOutput curExternalState outputValues
+            updatedExternalState <- liftIO $ processOutput curExternalState outputValues
             put updatedExternalState
             return updatedExternalState
 
@@ -188,8 +188,16 @@ processOpcodes programState genInput processOutput = do
                 [] -> do
                     updatedExternalState <- updateExternalState (outputValues programState)
                     calcInput <- liftIO $ genInput updatedExternalState
-                    liftIO $ writeArray array dest calcInput
-                    processOpcodes (programState {instructionPointer = index+2, outputValues = [] }) genInput processOutput 
+                    case calcInput of
+                        Just number -> do
+                            liftIO $ writeArray array dest number
+                            processOpcodes (programState {instructionPointer = index+2, outputValues = [] }) genInput processOutput
+                        Nothing -> 
+                            do -- terminate prematurely
+                                liftIO $ putStrLn "terminated prematurely"
+                                updateExternalState (outputValues programState) -- process any remaining outputs
+                                result <- liftIO $ readArray array 1
+                                return $ programState {resultValue = Just result, terminated = True}
                 otherwise -> do
                     liftIO $ writeArray array dest (head . inputValues $ programState)
                     processOpcodes (programState {instructionPointer = index+2, inputValues = tail . inputValues $ programState}) genInput processOutput 
