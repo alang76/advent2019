@@ -1,0 +1,43 @@
+name:                puzzle16
+version:             0.1.0.0
+github:              "alang76/puzzle16"
+license:             BSD3
+author:              "Arjen Langebaerd"
+maintainer:          "arjen@langebaerd.net"
+copyright:           "Copyright (c) 2019 Arjen Langebaerd"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            solver for advent of code puzzle
+# category:            Code Competitions
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/alang76/puzzle16#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- digits >= 0.3.1
+
+executables:
+  puzzle16-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+
+tests:
+  puzzle16-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+
