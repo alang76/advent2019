@@ -1,0 +1,49 @@
+name:                puzzle17
+version:             0.1.0.0
+github:              "githubuser/puzzle17"
+license:             BSD3
+author:              "Author name here"
+maintainer:          "example@example.com"
+copyright:           "2020 Author name here"
+
+extra-source-files:
+- README.md
+- ChangeLog.md
+
+# Metadata used when publishing your package
+# synopsis:            solver for advent of code puzzle
+# category:            Code Competitions
+
+# To avoid duplicated efforts in documentation and dealing with the
+# complications of embedding Haddock markup inside cabal files, it is
+# common to point users to the README.md file.
+description:         Please see the README on GitHub at <https://github.com/githubuser/puzzle17#readme>
+
+dependencies:
+- base >= 4.7 && < 5
+- megaparsec >= 8.0.0
+- array >= 0.5.3.0
+- containers >= 0.6.0.1
+- text >= 1.2.3.1
+- split >= 0.1.1
+- mtl >= 2.2.2
+- listsafe >= 0.1.0.1
+
+executables:
+  puzzle17-exe:
+    main:                Main.hs
+    source-dirs:         app
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+
+tests:
+  puzzle17-test:
+    main:                Spec.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+
