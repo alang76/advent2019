@@ -3,16 +3,13 @@
 
 module IntComputer where
 
-import Control.Monad.ST
-import Control.Monad.State
-import Control.Exception (assert)
-import Text.Megaparsec
-import Text.Megaparsec.Char
+import Control.Monad.State (StateT, liftIO, get, put)
+import Text.Megaparsec (Parsec, parseMaybe, some, optional)
+import Text.Megaparsec.Char (char, digitChar)
 import Data.Text (strip, pack, unpack)
-import Data.Array.IO
-import Data.Void
-import Data.Maybe
-import Debug.Trace
+import Data.Array.IO (IOArray, writeArray, readArray, newListArray)
+import Data.Void (Void)
+import Data.Maybe (fromJust)
 
 type Parser = Parsec Void String
 
@@ -61,14 +58,14 @@ intParserP = do
    negative <- optional (char '-') 
    let negFunc = case negative of
            Just _ -> negate
-           otherwise -> id
+           _ -> id
    number <- some digitChar
    return . negFunc $ (read number :: Integer)
 
 programParserP :: Parser [Integer]
 programParserP = some (do
    number <- intParserP
-   optional (char ',')
+   _ <- optional (char ',')
    return number)
    
 opCodeParserP :: Parser OpCode
@@ -85,6 +82,7 @@ opCodeParserP = do
            8 -> Equals
            9 -> AdjustRelativeBase
            99 -> Terminate
+           _ -> error ("unsupported opcode: " ++ show opCode)
    return opCode
 
 paramModeParserP :: Parser ParamModes
@@ -96,6 +94,7 @@ paramModeParserP = do
            getMode '0' = PositionMode
            getMode '1' = ImmediateMode
            getMode '2' = RelativeMode
+           getMode modeChar = error ("unsupported parameter mode: " ++ show modeChar)
            paramModes = 
                ParamModes (getMode firstMode)
                           (getMode secondMode)
@@ -156,10 +155,8 @@ processOpcodes programState genInput processOutput = do
             1 -> getFirstParam
             2 -> getSecondParam
             3 -> getThirdParam
+            _ -> error ("unsupported parameter index: " ++ show idx)
         
-        readDest :: Integer -> IO Integer
-        readDest idx = readDestVal idx (getParam idx paramModes)
-
         doBinOp :: (Integer -> Integer -> Integer) -> IO ()
         doBinOp op = do
             left <- readModedParam 1
@@ -190,7 +187,7 @@ processOpcodes programState genInput processOutput = do
                                 liftIO $ putStrLn "terminated prematurely"
                                 result <- liftIO $ readArray array 1
                                 return $ programState {resultValue = Just result, terminated = True}
-                otherwise -> do
+                _ -> do
                     liftIO $ writeArray array dest (head . inputValues $ programState)
                     processOpcodes (programState {instructionPointer = index+2, inputValues = tail . inputValues $ programState}) genInput processOutput 
         Output -> do
@@ -204,13 +201,13 @@ processOpcodes programState genInput processOutput = do
             p2 <- liftIO $ readModedParam 2
             case p1 of 
                 0 -> processOpcodes (programState {instructionPointer = index+3}) genInput processOutput 
-                otherwise -> processOpcodes (programState {instructionPointer = p2}) genInput processOutput 
+                _ -> processOpcodes (programState {instructionPointer = p2}) genInput processOutput 
         JumpIfFalse -> do
             p1 <- liftIO $ readModedParam 1
             p2 <- liftIO $ readModedParam 2
             case p1 of 
                 0 -> processOpcodes (programState {instructionPointer = p2}) genInput processOutput 
-                otherwise -> processOpcodes (programState {instructionPointer = index+3}) genInput processOutput 
+                _ -> processOpcodes (programState {instructionPointer = index+3}) genInput processOutput 
         LessThan -> do
             p1 <- liftIO $ readModedParam 1
             p2 <- liftIO $ readModedParam 2
@@ -243,7 +240,7 @@ addInput state input =state { inputValues = (inputValues state) ++ [input]}
 
 initializeProgram :: [Integer] -> IO ProgramState
 initializeProgram program = do
-    arr <- newListArray  (0, toInteger 10000) (program ++ repeat 0)
+    arr <- newListArray  (0, 10000) (program ++ repeat 0)
     return $ ProgramState 0 arr [] 0 Nothing False
 
 readProgram :: String -> IO ProgramState

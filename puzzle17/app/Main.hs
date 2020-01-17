@@ -71,9 +71,6 @@ data World = World {
     outputCoord :: Coord
 }
 
-instance Eq World where
-    w1 == w2 = (moveInputs w1 == moveInputs w2)
-
 superImposeDroid :: Map Coord Tile -> Droid -> Map Coord Tile
 superImposeDroid worldMap' droid' = Map.insert (position droid') (DroidC droid') worldMap'
 
@@ -106,6 +103,9 @@ instance Show World where
 lookupTile :: World -> Coord -> Maybe Tile
 lookupTile = flip Map.lookup . worldMap
 
+setTile :: Coord -> Tile -> World -> World
+setTile coord tile world = world{worldMap=Map.insert coord tile (worldMap world)}
+
 mkWorld :: World
 mkWorld = World Map.empty 0 0 mkDroid moveInputs' Initial (0,0)
 
@@ -118,54 +118,44 @@ setWorldMeta world =
         world {width=widthM, height=heightM}
 
 updateWorld :: World -> Integer -> Maybe World
-updateWorld inputWorld outputValue = setWorld outputValue inputWorld
-    where
-        setWorld :: Integer -> World -> Maybe World
-        setWorld asciiCode world = 
-            let coord = outputCoord world 
-                maybeTile = getTile asciiCode
-                newDroid = updateDroid (droid world) coord asciiCode
-                newDroidWorld = world{droid=newDroid}
-                (newCoord, newWorld) = 
-                    (updateCoord asciiCode coord, 
-                    case maybeTile of
-                        Just tile -> setTile coord tile newDroidWorld
-                        Nothing -> newDroidWorld)
-            in if (asciiCode==10 && ((getX coord) == 0))
-                then Nothing -- newline after newline indicates end of world updates 
-                else Just newWorld{outputCoord=newCoord}
+updateWorld world asciiCode =
+        let coord = outputCoord world 
+            maybeTile = getTile asciiCode
+            newDroid = updateDroid (droid world) coord asciiCode
+            newDroidWorld = world{droid=newDroid}
+            (newCoord, newWorld) = 
+                (updateCoord asciiCode coord, 
+                case maybeTile of
+                    Just tile -> setTile coord tile newDroidWorld
+                    Nothing -> newDroidWorld)
 
-        setTile :: Coord -> Tile -> World -> World
-        setTile coord tile world = world{worldMap=Map.insert coord tile (worldMap world)}
+            updateCoord :: Integer -> Coord -> Coord
+            updateCoord 10 (_,y)= (0,y+1)
+            updateCoord _ (x,y)= (x+1,y)
+    
+            updateDroid :: Droid -> Coord -> Integer -> Droid
+            updateDroid droid' newCoord droidUpdate = 
+                let 
+                    setDroidDirection dir = droid' {position = newCoord, direction = dir}
+                in
+                    case droidUpdate of
+                        94 -> setDroidDirection Up
+                        62 -> setDroidDirection Right
+                        118 ->setDroidDirection Down
+                        60 -> setDroidDirection Left
+                        _ -> droid'
 
-        updateCoord :: Integer -> Coord -> Coord
-        updateCoord 10 (_,y)= (0,y+1)
-        updateCoord _ (x,y)= (x+1,y)
-
-        updateDroid :: Droid -> Coord -> Integer -> Droid
-        updateDroid droid' newCoord droidUpdate = 
-            let 
-                setDroidDirection dir = droid' {position = newCoord, direction = dir}
-            in
-                case droidUpdate of
-                    94 -> setDroidDirection Up
-                    62 -> setDroidDirection Right
-                    118 ->setDroidDirection Down
-                    60 -> setDroidDirection Left
-                    _ -> droid'
-                
-
-        getTile :: Integer -> Maybe Tile
-        getTile 35 = Just Scaffold
-        getTile 46 = Just OpenSpace
-        getTile _ = Nothing
-
-
+            getTile :: Integer -> Maybe Tile
+            getTile 35 = Just Scaffold
+            getTile 46 = Just OpenSpace
+            getTile _ = Nothing
+            
+        in if (asciiCode==10 && ((getX coord) == 0))
+            then Nothing -- newline after newline indicates end of world updates 
+            else Just newWorld{outputCoord=newCoord}
 
 inputGeneratorPart1 :: World -> IO (World, Maybe Integer)
 inputGeneratorPart1 world = pure (world, Nothing)
-
-
 
 outputProcessor :: World -> Integer -> IO World
 outputProcessor world output =
